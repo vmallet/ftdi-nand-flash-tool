@@ -101,6 +101,7 @@ typedef struct _prog_params {
     int overwrite;
     int page_count;
     int delay; /* delay in usec */
+    int test; /* run simple tests instead of dump */
 } prog_params_t;
 
 
@@ -116,13 +117,14 @@ void reset_prog_params(prog_params_t *params)
 void print_prog_params(prog_params_t *params)
 {
     printf("Params: start_page=%d (%x), page_count=%d, filename=%s, "
-           "overwrite=%d, delay=%d\n",
+           "overwrite=%d, delay=%d, test=%d\n",
         params->start_page,
         params->start_page,
         params->page_count,
         params->filename,
         params->overwrite,
-        params->delay);
+        params->delay,
+        params->test);
 }
 
 int parse_prog_params(prog_params_t *params, int argc, char **argv)
@@ -134,7 +136,7 @@ int parse_prog_params(prog_params_t *params, int argc, char **argv)
 
   opterr = 0;
 
-  while ((c = getopt (argc, argv, "c:d:s:f:o")) != -1)
+  while ((c = getopt (argc, argv, "c:d:s:tf:o")) != -1)
     switch (c)
       {
       case 'c':
@@ -151,6 +153,9 @@ int parse_prog_params(prog_params_t *params, int argc, char **argv)
         break;
       case 's':
         params->start_page = atoi(optarg);
+        break;
+      case 't':
+        params->test = 1;
         break;
       case '?':
         if (strchr("csf", optopt))
@@ -977,6 +982,37 @@ void get_page_dummy_data(unsigned char* page_data)
 	}
 }
 
+void run_tests(prog_params_t *params)
+{
+    printf("Running visual tests; it is recommended you DON'T have a chip "
+           "connected to the rig when this is going on... sleeping 5 seconds, "
+           "press CTRL-C NOW if you want to abort...\n");
+
+    _usleep(5* 1000000);
+
+    printf("testing control bus, check visually...\n");
+    _usleep(2* 1000000);
+    test_controlbus();
+
+    printf("testing I/O bus for output, check visually...\n");
+    _usleep(2* 1000000);
+    test_iobus();
+}
+
+void close_bus(struct ftdi_context *bus, char *msg)
+{
+    printf("%s", msg);
+    ftdi_disable_bitbang(bus);
+    ftdi_usb_close(bus);
+    ftdi_free(bus);
+}
+
+void close_busses()
+{
+    close_bus(nandflash_iobus, "disabling bitbang mode (channel 1)\n");
+    close_bus(nandflash_controlbus, "disabling bitbang mode (channel 2)\n");
+}
+
 int main(int argc, char **argv)
 {
     struct ftdi_version_info version;
@@ -996,7 +1032,6 @@ int main(int argc, char **argv)
         printf("File already exists, use -o to overwrite: %s\n", params.filename);
         return 2;
     }
-
 
     // show library version
     version = ftdi_get_library_version();
@@ -1054,6 +1089,17 @@ int main(int argc, char **argv)
     iobus_set_direction(IOBUS_OUT);
     iobus_reset_value();
     iobus_update_output();
+
+    if (params.test)
+    {
+        printf("Test mode; running tests, then aborting\n");
+        run_tests(&params);
+
+        close_busses();
+
+        return 0;
+    }
+
 
     /*printf("testing control bus, check visually...\n");
     _usleep(2* 1000000);
@@ -1128,15 +1174,7 @@ int main(int argc, char **argv)
     printf("done, 1 sec to go...\n");
     _usleep(1 * 1000000);
 
-    printf("disabling bitbang mode(channel 1)\n");
-    ftdi_disable_bitbang(nandflash_iobus);
-    ftdi_usb_close(nandflash_iobus);
-    ftdi_free(nandflash_iobus);
-
-    printf("disabling bitbang mode(channel 2)\n");
-    ftdi_disable_bitbang(nandflash_controlbus);
-    ftdi_usb_close(nandflash_controlbus);
-    ftdi_free(nandflash_controlbus);
+    close_busses();
 
     return 0;
 }
