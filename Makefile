@@ -9,8 +9,8 @@ all: flash-tool
 flash-tool: flash-tool.o
 	gcc flash-tool.o -o flash-tool $(LIBS)
 
-flash-tool.o: bitbang_ft2232.c
-	gcc -c bitbang_ft2232.c -o flash-tool.o $(CFLAGS)
+flash-tool.o: flash-tool.c
+	gcc -O2 -c flash-tool.c -o flash-tool.o $(CFLAGS)
 
 clean:
 	rm -f flash-tool flash-tool.o
