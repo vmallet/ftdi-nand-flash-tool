@@ -621,7 +621,36 @@ void check_ID_register(unsigned char* ID_register)
     }
 }
 
-/* Address Cycle Map calculations */
+/* 
+ * Address Cycle Map calculations, for Toshiba TC58NVG1S3HTA00, page based.
+ *
+ * CA: Column Address (12 bits)
+ * PA: Page Address 17 bits (6 bits page in block, 11 bits block address)
+ *
+ * NOTE: this will actually populate the 2nd byte (CA high) with all 8
+ * bits (instead of 4), and the 5th byte (PA16..) with all 8 bits instead
+ * of just 1 to let the function be more generalizable then the 2048*131072
+ * configuration of the toshiba chip. If not acceptable, this function
+ * should somehow fail instead of silently producing the wrong address
+ * bytes.
+ */
+void get_address_cycle_map_x8_toshiba_page(unsigned int page, 
+                                           unsigned int column, 
+                                           unsigned char* addr_cycles)
+{
+    addr_cycles[0] = (unsigned char) ((column      ) & 0xFF); // CA0..CA7
+    addr_cycles[1] = (unsigned char) ((column >>  8) & 0xFF); // CA8..CA11 //NOTE
+    addr_cycles[2] = (unsigned char) ((page        ) & 0xFF); // PA0..PA7
+    addr_cycles[3] = (unsigned char) ((page   >>  8) & 0xFF); // PA8..PA15
+    addr_cycles[4] = (unsigned char) ((page   >> 16) & 0xFF); // PA16 // SEE NOTE
+}
+
+/* Address Cycle Map calculations 
+ *
+ * NOTE(vm): this was the original address calculation. I swapped it
+ * with the "_toshiba" one that's appropriate for the Toshiba TC58NVG1S3HTA00
+ * chip I'm working with.
+ */
 void get_address_cycle_map_x8(uint32_t mem_address, unsigned char* addr_cylces)
 {
     addr_cylces[0] = (unsigned char)(  mem_address & 0x000000FF);
@@ -636,7 +665,7 @@ int dump_memory(prog_params_t *params)
     FILE *fp;
     unsigned int page_idx;
     unsigned int page_idx_max;
-    unsigned char addr_cylces[5];
+    unsigned char addr_cycles[5];
     uint32_t mem_address;
     unsigned char mem_large_block[PAGE_SIZE]; /* page content */
     //    unsigned int byte_offset;
@@ -663,11 +692,11 @@ int dump_memory(prog_params_t *params)
           DBG("Latching first command byte to read a page: ");
           latch_command(params, CMD_READ1[0]);
 
-          get_address_cycle_map_x8(mem_address, addr_cylces);
+          get_address_cycle_map_x8_toshiba_page(page_idx, 0, addr_cycles);
           DBG("Latching address cycles: 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
-              addr_cylces[0], addr_cylces[1], /* column address */
-              addr_cylces[2], addr_cylces[3], addr_cylces[4] ); /* row address */
-          latch_address(params, addr_cylces, 5);
+              addr_cycles[0], addr_cycles[1], /* column address */
+              addr_cycles[2], addr_cycles[3], addr_cycles[4]); /* row address */
+          latch_address(params, addr_cycles, 5);
 
           DBG("Latching second command byte to read a page: ");
           latch_command(params, CMD_READ1[1]);
