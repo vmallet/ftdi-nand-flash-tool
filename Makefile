@@ -1,14 +1,16 @@
 CC=gcc
-CFLAGS=-Wall -g -I/usr/include/libftdi1/
+FTDI_INCLUDE=/usr/include/libftdi1/
+CFLAGS=-Wall -g -I$(FTDI_INCLUDE)
 LIBS=-L/usr/lib/ -lftdi1 -lusb-1.0
 
-default: program
-all: program
+default: flash-tool
+all: flash-tool
 
-program: program.o
-	gcc program.o -o program $(LIBS)
-program.o: bitbang_ft2232.c
-	gcc -c bitbang_ft2232.c -o program.o $(CFLAGS)
+flash-tool: flash-tool.o
+	gcc flash-tool.o -o flash-tool $(LIBS)
+
+flash-tool.o: bitbang_ft2232.c
+	gcc -c bitbang_ft2232.c -o flash-tool.o $(CFLAGS)
 
 clean:
-	rm -f program program.o
+	rm -f flash-tool flash-tool.o
