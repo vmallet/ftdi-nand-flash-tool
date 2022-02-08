@@ -67,6 +67,7 @@
 #define DEFAULT_FILENAME "flashdump.bin"
 #define DEFAULT_START_PAGE 0
 #define DEFAULT_PAGE_COUNT 131072
+#define DEFAULT_DELAY 0
 
 
 const unsigned char CMD_READID = 0x90; /* read ID register */
@@ -88,6 +89,7 @@ typedef struct _prog_params {
     char *filename;
     int overwrite;
     int page_count;
+    int delay; /* delay in usec */
 } prog_params_t;
 
 
@@ -97,16 +99,19 @@ void reset_prog_params(prog_params_t *params)
     params->start_page = DEFAULT_START_PAGE;
     params->filename = DEFAULT_FILENAME;
     params->page_count = DEFAULT_PAGE_COUNT;
+    params->delay = DEFAULT_DELAY;
 }
 
 void print_prog_params(prog_params_t *params)
 {
-    printf("Params: start_page=%d (%x), page_count=%d, filename=%s, overwrite=%d\n",
+    printf("Params: start_page=%d (%x), page_count=%d, filename=%s, "
+           "overwrite=%d, delay=%d\n",
         params->start_page,
         params->start_page,
         params->page_count,
         params->filename,
-        params->overwrite);
+        params->overwrite,
+        params->delay);
 }
 
 int parse_prog_params(prog_params_t *params, int argc, char **argv)
@@ -118,11 +123,14 @@ int parse_prog_params(prog_params_t *params, int argc, char **argv)
 
   opterr = 0;
 
-  while ((c = getopt (argc, argv, "c:s:f:o")) != -1)
+  while ((c = getopt (argc, argv, "c:d:s:f:o")) != -1)
     switch (c)
       {
       case 'c':
         params->page_count = atoi(optarg);
+        break;
+      case 'd':
+        params->delay = atoi(optarg);
         break;
       case 'f':
         params->filename = optarg;
@@ -146,6 +154,14 @@ int parse_prog_params(prog_params_t *params, int argc, char **argv)
   for (index = optind; index < argc; index++)
     printf ("Non-option argument %s\n", argv[index]);
   return 0;
+}
+
+void inline _usleep(int delay_us)
+{
+    if (delay_us)
+    {
+        usleep(delay_us);
+    }
 }
 
 void controlbus_reset_value()
@@ -175,74 +191,74 @@ void test_controlbus()
     printf("  CLE on\n");
     controlbus_pin_set(PIN_CLE, ON);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 
     printf("  ALE on\n");
     controlbus_pin_set(PIN_ALE, ON);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 
     printf("  nCE on\n");
     controlbus_pin_set(PIN_nCE, ON);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 
     printf("  nWE on\n");
     controlbus_pin_set(PIN_nWE, ON);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 
 
     printf("  nRE on\n");
     controlbus_pin_set(PIN_nRE, ON);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 
     printf("  nWP on\n");
     controlbus_pin_set(PIN_nWP, ON);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 
     printf("  LED on\n");
     controlbus_pin_set(PIN_LED, ON);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 
 
     printf("  CLE off\n");
     controlbus_pin_set(PIN_CLE, OFF);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 
     printf("  ALE off\n");
     controlbus_pin_set(PIN_ALE, OFF);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 
     printf("  nCE off\n");
     controlbus_pin_set(PIN_nCE, OFF);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 
     printf("  nWE off\n");
     controlbus_pin_set(PIN_nWE, OFF);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 
     printf("  nRE off\n");
     controlbus_pin_set(PIN_nRE, OFF);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 
     printf("  nWP off\n");
     controlbus_pin_set(PIN_nWP, OFF);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 
     printf("  LED off\n");
     controlbus_pin_set(PIN_LED, OFF);
     controlbus_update_output(nandflash_controlbus);
-    usleep(CONTROLBUS_TEST_DELAY);
+    _usleep(CONTROLBUS_TEST_DELAY);
 }
 
 void iobus_set_direction(iobus_inout_t inout)
@@ -302,86 +318,86 @@ void test_iobus()
     printf("  DIO0 on\n");
     iobus_pin_set(PIN_DIO0, ON);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     printf("  DIO1 on\n");
     iobus_pin_set(PIN_DIO1, ON);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     printf("  DIO2 on\n");
     iobus_pin_set(PIN_DIO2, ON);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     printf("  DIO3 on\n");
     iobus_pin_set(PIN_DIO3, ON);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     printf("  DIO4 on\n");
     iobus_pin_set(PIN_DIO4, ON);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     printf("  DIO5 on\n");
     iobus_pin_set(PIN_DIO5, ON);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     printf("  DIO6 on\n");
     iobus_pin_set(PIN_DIO6, ON);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     printf("  DIO7 on\n");
     iobus_pin_set(PIN_DIO7, ON);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
 
     iobus_pin_set(PIN_DIO0, OFF);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     iobus_pin_set(PIN_DIO1, OFF);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     iobus_pin_set(PIN_DIO2, OFF);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     iobus_pin_set(PIN_DIO3, OFF);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     iobus_pin_set(PIN_DIO4, OFF);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     iobus_pin_set(PIN_DIO5, OFF);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     iobus_pin_set(PIN_DIO6, OFF);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
     iobus_pin_set(PIN_DIO7, OFF);
     iobus_update_output(nandflash_iobus);
-    usleep(IOBUS_TEST_DELAY);
+    _usleep(IOBUS_TEST_DELAY);
 
-    usleep(5 * IOBUS_TEST_DELAY);
+    _usleep(5 * IOBUS_TEST_DELAY);
     iobus_set_value(0xFF);
     iobus_update_output();
-    usleep(5 * IOBUS_TEST_DELAY);
+    _usleep(5 * IOBUS_TEST_DELAY);
     iobus_set_value(0xAA);
     iobus_update_output();
-    usleep(5 * IOBUS_TEST_DELAY);
+    _usleep(5 * IOBUS_TEST_DELAY);
     iobus_set_value(0x55);
     iobus_update_output();
-    usleep(5 * IOBUS_TEST_DELAY);
+    _usleep(5 * IOBUS_TEST_DELAY);
     iobus_set_value(0x00);
     iobus_update_output();
 
@@ -391,7 +407,7 @@ void test_iobus()
     iobus_pin_set(PIN_DIO4, ON);
     iobus_pin_set(PIN_DIO6, ON);
     iobus_update_output(nandflash_iobus);
-    usleep(2* 100000);
+    _usleep(2* 100000);
 
 }
 
@@ -399,7 +415,7 @@ void test_iobus()
 Enable low, Command Latch Enable High, Address Latch Enable low and Read Enable High and latched on the rising
 edge of Write Enable. Moreover for commands that starts a modify operation (write/erase) the Write Protect pin must be
 high."" */
-int latch_command(unsigned char command)
+int latch_command(prog_params_t *params, unsigned char command)
 {
     /* check if ALE is low and nRE is high */
     if( controlbus_value & PIN_nCE )
@@ -454,7 +470,7 @@ int latch_command(unsigned char command)
  * See Figure 5 and Table 13 for details of the timings requirements.
  * Addresses are always applied on IO7:0 regardless of the bus configuration (x8 or x16).""
  */
-int latch_address(unsigned char address[], unsigned int addr_length)
+int latch_address(prog_params_t *params, unsigned char address[], unsigned int addr_length)
 {
     unsigned int addr_idx = 0;
 
@@ -480,22 +496,22 @@ int latch_address(unsigned char address[], unsigned int addr_length)
     controlbus_pin_set(PIN_ALE, ON);
     controlbus_update_output();
 
-    for(addr_idx = 0; addr_idx < addr_length; addr_idx++)
+    for (addr_idx = 0; addr_idx < addr_length; addr_idx++)
     {
         // toggle nWE low
         controlbus_pin_set(PIN_nWE, OFF);
         controlbus_update_output();
-        usleep(REALWORLD_DELAY);
+        _usleep(params->delay);
 
         // change I/O pins
         iobus_set_value(address[addr_idx]);
         iobus_update_output();
-        usleep(REALWORLD_DELAY); /* TODO: assure setup delay */
+        _usleep(params->delay); /* TODO: assure setup delay */
 
         // toggle nWE back high (acts as clock to latch the current address byte!)
         controlbus_pin_set(PIN_nWE, ON);
         controlbus_update_output();
-        usleep(REALWORLD_DELAY); /* TODO: assure hold delay */
+        _usleep(params->delay); /* TODO: assure hold delay */
     }
 
     // toggle ALE low
@@ -512,7 +528,7 @@ int latch_address(unsigned char address[], unsigned int addr_length)
  * Data can be serially shifted out by toggling the Read Enable pin with Chip 
  * Enable low, Write Enable High, Address Latch Enable low, and Command Latch 
  * Enable low. */
-int latch_register(unsigned char reg[], unsigned int reg_length)
+int latch_register(prog_params_t *params, unsigned char reg[], unsigned int reg_length)
 {
     unsigned int addr_idx = 0;
 
@@ -535,14 +551,14 @@ int latch_register(unsigned char reg[], unsigned int reg_length)
 
     iobus_set_direction(IOBUS_IN);
 
-    for(addr_idx = 0; addr_idx < reg_length; addr_idx++)
+    for (addr_idx = 0; addr_idx < reg_length; addr_idx++)
     {
         /* toggle nRE low; acts like a clock to latch out the data;
          * data is valid tREA after the falling edge of nRE 
          * (also increments the internal column address counter by one) */
         controlbus_pin_set(PIN_nRE, OFF);
         controlbus_update_output();
-        usleep(REALWORLD_DELAY); /* TODO: assure tREA delay */
+        _usleep(params->delay);
 
         // read I/O pins
         reg[addr_idx] = iobus_read_input();
@@ -550,7 +566,7 @@ int latch_register(unsigned char reg[], unsigned int reg_length)
         // toggle nRE back high
         controlbus_pin_set(PIN_nRE, ON);
         controlbus_update_output();
-        usleep(REALWORLD_DELAY); /* TODO: assure tREH and tRHZ delays */
+        _usleep(params->delay);
     }
 
     iobus_set_direction(IOBUS_OUT);
@@ -625,13 +641,13 @@ int dump_memory(prog_params_t *params)
               addr_cylces[2], addr_cylces[3], addr_cylces[4] ); /* row address */
 
           printf("Latching first command byte to read a page...\n");
-          latch_command(CMD_READ1[0]);
+          latch_command(params, CMD_READ1[0]);
 
           printf("Latching address cycles...\n");
-          latch_address(addr_cylces, 5);
+          latch_address(params, addr_cylces, 5);
 
           printf("Latching second command byte to read a page...\n");
-          latch_command(CMD_READ1[1]);
+          latch_command(params, CMD_READ1[1]);
 
           // busy-wait for high level at the busy line
           printf("Checking for busy line...\n");
@@ -645,7 +661,7 @@ int dump_memory(prog_params_t *params)
           printf("  done\n");
 
           printf("Latching out data block...\n");
-          latch_register(mem_large_block, PAGE_SIZE);
+          latch_register(params, mem_large_block, PAGE_SIZE);
       }
 
 //      // Dumping memory to console and file
@@ -714,7 +730,7 @@ int dump_memory(prog_params_t *params)
  * Only the Read Status command and Reset command are valid while erasing is in progress.
  * When the erase operation is completed, the Write Status Bit (I/O 0) may be checked."
  */
-int erase_block(unsigned int nBlockId)
+int erase_block(prog_params_t *params, unsigned int nBlockId)
 {
 	uint32_t mem_address;
 	unsigned char addr_cylces[5];
@@ -726,7 +742,7 @@ int erase_block(unsigned int nBlockId)
 	controlbus_pin_set(PIN_nWP, ON);
 
 	printf("Latching first command byte to erase a block...\n");
-	latch_command(CMD_BLOCKERASE[0]); /* block erase setup command */
+	latch_command(params, CMD_BLOCKERASE[0]); /* block erase setup command */
 
 	printf("Erasing block of data from memory address 0x%02X\n", mem_address);
 	get_address_cycle_map_x8(mem_address, addr_cylces);
@@ -736,10 +752,10 @@ int erase_block(unsigned int nBlockId)
 
 	printf("Latching page(row) address (3 bytes)...\n");
 	unsigned char address[] = { addr_cylces[2], addr_cylces[3], addr_cylces[4] };
-	latch_address(address, 3);
+	latch_address(params, address, 3);
 
 	printf("Latching second command byte to erase a block...\n");
-	latch_command(CMD_BLOCKERASE[1]);
+	latch_command(params, CMD_BLOCKERASE[1]);
 
 	/* tWB: WE High to Busy is 100 ns -> ignore it here as it takes some time for the next command to execute */
 
@@ -757,10 +773,10 @@ int erase_block(unsigned int nBlockId)
 
 	/* Read status */
 	printf("Latching command byte to read status...\n");
-	latch_command(CMD_READSTATUS);
+	latch_command(params, CMD_READSTATUS);
 
 	unsigned char status_register;
-	latch_register(&status_register, 1); /* data output operation */
+	latch_register(params, &status_register, 1); /* data output operation */
 
 	/* output the retrieved status register content */
 	printf("Status register content:   0x%02X\n", status_register);
@@ -783,31 +799,25 @@ int erase_block(unsigned int nBlockId)
 }
 
 
-int latch_data_out(unsigned char data[], unsigned int length)
+int latch_data_out(prog_params_t *params, unsigned char data[], unsigned int length)
 {
-//	printf("\n");
-
-    for(unsigned int k = 0; k < length; k++)
+    for (unsigned int k = 0; k < length; k++)
     {
         // toggle nWE low
         controlbus_pin_set(PIN_nWE, OFF);
         controlbus_update_output();
-        usleep(REALWORLD_DELAY);
+        _usleep(params->delay);
 
         // change I/O pins
         iobus_set_value(data[k]);
         iobus_update_output();
-        usleep(REALWORLD_DELAY); /* TODO: assure setup delay */
-
-//        printf("0x%02X ", data[k]);
+        _usleep(params->delay); /* TODO: assure setup delay */
 
         // toggle nWE back high (acts as clock to latch the current address byte!)
         controlbus_pin_set(PIN_nWE, ON);
         controlbus_update_output();
-        usleep(REALWORLD_DELAY); /* TODO: assure hold delay */
+        _usleep(params->delay); /* TODO: assure hold delay */
     }
-
-//    printf("\n");
 
     return 0;
 }
@@ -849,7 +859,7 @@ int latch_data_out(unsigned char data[], unsigned int length)
  * The command register remains in Read Status command mode until another valid command is written to the
  * command register.
  */
-int program_page(unsigned int nPageId, unsigned char* data)
+int program_page(prog_params_t *params, unsigned int nPageId, unsigned char* data)
 {
 	uint32_t mem_address;
     unsigned char addr_cylces[5];
@@ -867,16 +877,16 @@ int program_page(unsigned int nPageId, unsigned char* data)
 
 	printf("Latching first command byte to write a page (page size is %d)...\n",
 			PAGE_SIZE);
-	latch_command(CMD_PAGEPROGRAM[0]); /* Serial Data Input command */
+	latch_command(params, CMD_PAGEPROGRAM[0]); /* Serial Data Input command */
 
 	printf("Latching address cycles...\n");
-    latch_address(addr_cylces, 5);
+    latch_address(params, addr_cylces, 5);
 
 	printf("Latching out the data of the page...\n");
-	latch_data_out(data, PAGE_SIZE);
+	latch_data_out(params, data, PAGE_SIZE);
 
 	printf("Latching second command byte to write a page...\n");
-	latch_command(CMD_PAGEPROGRAM[1]); /* Page Program confirm command command */
+	latch_command(params, CMD_PAGEPROGRAM[1]); /* Page Program confirm command command */
 
 	// busy-wait for high level at the busy line
 	printf("Checking for busy line...\n");
@@ -893,10 +903,10 @@ int program_page(unsigned int nPageId, unsigned char* data)
 
 	/* Read status */
 	printf("Latching command byte to read status...\n");
-	latch_command(CMD_READSTATUS);
+	latch_command(params, CMD_READSTATUS);
 
 	unsigned char status_register;
-	latch_register(&status_register, 1); /* data output operation */
+	latch_register(params, &status_register, 1); /* data output operation */
 
 	/* output the retrieved status register content */
 	printf("Status register content:   0x%02X\n", status_register);
@@ -1018,7 +1028,7 @@ int main(int argc, char **argv)
     printf("enabling bitbang mode (channel 2)\n");
     ftdi_set_bitmode(nandflash_controlbus, CONTROLBUS_BITMASK, BITMODE_BITBANG);
 
-    usleep(2* 1000000);
+    _usleep(500 * 1000);  // 500ms
 
     controlbus_reset_value();
     controlbus_update_output();
@@ -1028,11 +1038,11 @@ int main(int argc, char **argv)
     iobus_update_output();
 
     /*printf("testing control bus, check visually...\n");
-    usleep(2* 1000000);
+    _usleep(2* 1000000);
     test_controlbus();
 
     printf("testing I/O bus for output, check visually...\n");
-    usleep(2* 1000000);
+    _usleep(2* 1000000);
     test_iobus();*/
 
     printf("testing I/O and control bus for input read...\n");
@@ -1043,7 +1053,7 @@ int main(int argc, char **argv)
         unsigned char controlbus_val = controlbus_read_input();
         printf("data read back: iobus=0x%02x, controlbus=0x%02x\n",
                 iobus_val, controlbus_val);
-        usleep(1* 1000000);
+        _usleep(1* 1000000);
     }
     iobus_set_direction(IOBUS_OUT);
 
@@ -1057,14 +1067,14 @@ int main(int argc, char **argv)
     {
         printf("Trying to read the ID register...\n");
 
-        latch_command(CMD_READID); /* command input operation; command: READ ID */
+        latch_command(&params, CMD_READID); /* command input operation; command: READ ID */
 
         //unsigned char address[] = { 0x11, 0x22, 0x44, 0x88, 0xA5 };
         //latch_address(address, 5);
         unsigned char address[] = { 0x00 };
-        latch_address(address, 1); /* address input operation */
+        latch_address(&params, address, 1); /* address input operation */
 
-        latch_register(ID_register, 5); /* data output operation */
+        latch_register(&params, ID_register, 5); /* data output operation */
 
         check_ID_register(ID_register);
     }
@@ -1077,7 +1087,7 @@ int main(int argc, char **argv)
     /* Erase block #0 */
 //	erase_block(0);
 //
-//	usleep(1* 1000000);
+//	_usleep(1* 1000000);
 //
 //	/* Write pages 0..9 with dummy data */
 //    unsigned char page_data[PAGE_SIZE];
@@ -1086,7 +1096,7 @@ int main(int argc, char **argv)
 //    for(unsigned int m=0; m<10; m++)
 //    {
 //		program_page(0, page_data);
-//		usleep(1* 1000000);
+//		_usleep(1* 1000000);
 //    }
 
     /* Dump memory of the chip */
@@ -1097,8 +1107,8 @@ int main(int argc, char **argv)
     controlbus_pin_set(PIN_nCE, ON);
 
 
-    printf("done, 10 sec to go...\n");
-    usleep(10* 1000000);
+    printf("done, 1 sec to go...\n");
+    _usleep(1 * 1000000);
 
     printf("disabling bitbang mode(channel 1)\n");
     ftdi_disable_bitbang(nandflash_iobus);
