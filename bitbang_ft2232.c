@@ -592,7 +592,7 @@ void get_address_cycle_map_x8(uint32_t mem_address, unsigned char* addr_cylces)
     addr_cylces[4] = (unsigned char)( (mem_address & 0x30000000) >> 28 );
 }
 
-void dump_memory(prog_params_t *params)
+int dump_memory(prog_params_t *params)
 {
     FILE *fp;
     unsigned int page_idx;
@@ -603,15 +603,13 @@ void dump_memory(prog_params_t *params)
     //    unsigned int byte_offset;
     //    unsigned int line_no;
 
-    printf("Trying to open file for storing the binary dump...\n");
-    /* Opens a text file for both reading and writing. It first truncates the file to zero length
-     * if it exists, otherwise creates a file if it does not exist. */
-    fp = fopen(params->filename, "w+");
-
-    if( fp == NULL )
-        printf("  Error when opening the file...\n");
-    else
-        printf("  File opened successfully...\n");
+    fp = fopen(params->filename, "wb");
+    if (fp == NULL)
+    {
+        fprintf(stderr, "Could not open file: %s\n", params->filename);
+        return -1;
+    }
+    printf("Opened output file: %s\n", params->filename);
 
     // Start reading the data
     page_idx_max = params->start_page + params->page_count;
@@ -679,14 +677,21 @@ void dump_memory(prog_params_t *params)
 //      }
 
       // Dumping memory to file
-      //printf("Dumping binary data to file...\n");
-      fwrite(&mem_large_block[0], 1, PAGE_SIZE, fp);
+      if (!fwrite(mem_large_block, PAGE_SIZE, 1, fp))
+      {
+          fprintf(stderr, "Error writing page %d to file, aborting\n", page_idx);
+          fclose(fp);
+          return -1;
+      }
+      // Flush every page so we can Ctrl-C happily; the dump is slow enough anyways.
+      fflush(fp);
     }
 
     // Finished reading the data
     printf("Closing binary dump file...\n");
-
     fclose(fp);
+
+    return 0;
 }
 
 /**
