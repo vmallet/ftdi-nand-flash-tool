@@ -187,7 +187,7 @@ void controlbus_reset_value()
 
 void controlbus_pin_set(unsigned char pin, onoff_t val)
 {
-    if(val == ON)
+    if (val == ON)
         controlbus_value |= pin;
     else
         controlbus_value &= (unsigned char)0xFF ^ pin;
@@ -279,9 +279,9 @@ void test_controlbus()
 
 void iobus_set_direction(iobus_inout_t inout)
 {
-    if( inout == IOBUS_OUT )
+    if (inout == IOBUS_OUT)
         ftdi_set_bitmode(nandflash_iobus, IOBUS_BITMASK_WRITE, BITMODE_BITBANG);
-    else if( inout == IOBUS_IN )
+    else if (inout == IOBUS_IN)
         ftdi_set_bitmode(nandflash_iobus, IOBUS_BITMASK_READ, BITMODE_BITBANG);        
 }
 
@@ -292,7 +292,7 @@ void iobus_reset_value()
 
 void iobus_pin_set(unsigned char pin, onoff_t val)
 {
-    if(val == ON)
+    if (val == ON)
         iobus_value |= pin;
     else
         iobus_value &= (unsigned char)0xFF ^ pin;
@@ -427,25 +427,27 @@ void test_iobus()
 
 }
 
-/* "Command Input bus operation is used to give a command to the memory device. Command are accepted with Chip
-Enable low, Command Latch Enable High, Address Latch Enable low and Read Enable High and latched on the rising
-edge of Write Enable. Moreover for commands that starts a modify operation (write/erase) the Write Protect pin must be
-high."" */
+/* 
+ * "Command Input bus operation is used to give a command to the memory device.
+ *  Command are accepted with Chip Enable low, Command Latch Enable High, 
+ *  Address Latch Enable low and Read Enable High and latched on the rising
+ *  edge of Write Enable. Moreover for commands that starts a modify operation
+ *  (write/erase) the Write Protect pin must be high."
+*/
 int latch_command(prog_params_t *params, unsigned char command)
 {
     /* check if ALE is low and nRE is high */
-    if( controlbus_value & PIN_nCE )
+    if (controlbus_value & PIN_nCE)
     {
         fprintf(stderr, "latch_command requires nCE pin to be low\n");
         return EXIT_FAILURE;
     }
-    else if( ~controlbus_value & PIN_nRE )
+    else if (~controlbus_value & PIN_nRE)
     {
         fprintf(stderr, "latch_command requires nRE pin to be high\n");
         return EXIT_FAILURE;
     }
 
-    /* debug info */
     DBG("latch_command(0x%02X)\n", command);
 
     /* toggle CLE high (activates the latching of the IO inputs inside the 
@@ -480,28 +482,33 @@ int latch_command(prog_params_t *params, unsigned char command)
 /** 
  * "Address Input bus operation allows the insertion of the memory address. 
  * Five cycles are required to input the addresses for the 4Gbit devices. 
- * Addresses are accepted with Chip Enable low, Address Latch Enable High, Command Latch Enable low and 
- * Read Enable High and latched on the rising edge of Write Enable.
- * Moreover for commands that starts a modifying operation (write/erase) the Write Protect pin must be high. 
- * See Figure 5 and Table 13 for details of the timings requirements.
- * Addresses are always applied on IO7:0 regardless of the bus configuration (x8 or x16).""
+ * Addresses are accepted with Chip Enable low, Address Latch Enable High, 
+ * Command Latch Enable low and Read Enable High and latched on the rising 
+ * edge of Write Enable. 
+ * 
+ * Moreover for commands that starts a modifying operation (write/erase) 
+ * the Write Protect pin must be high. See Figure 5 and Table 13 for details 
+ * of the timings requirements. 
+ * 
+ * Addresses are always applied on IO7:0 regardless of the bus configuration 
+ * (x8 or x16)."
  */
 int latch_address(prog_params_t *params, unsigned char address[], unsigned int addr_length)
 {
     unsigned int addr_idx = 0;
 
     /* check if ALE is low and nRE is high */
-    if( controlbus_value & PIN_nCE )
+    if (controlbus_value & PIN_nCE)
     {
         fprintf(stderr, "latch_address requires nCE pin to be low\n");
         return EXIT_FAILURE;
     }
-    else if( controlbus_value & PIN_CLE )
+    else if (controlbus_value & PIN_CLE)
     {
         fprintf(stderr, "latch_address requires CLE pin to be low\n");
         return EXIT_FAILURE;
     }
-    else if( ~controlbus_value & PIN_nRE )
+    else if (~controlbus_value & PIN_nRE)
     {
         fprintf(stderr, "latch_address requires nRE pin to be high\n");
         return EXIT_FAILURE;
@@ -549,17 +556,17 @@ int latch_register(prog_params_t *params, unsigned char reg[], unsigned int reg_
     unsigned int addr_idx = 0;
 
     /* check if ALE is low and nRE is high */
-    if( controlbus_value & PIN_nCE )
+    if (controlbus_value & PIN_nCE)
     {
         fprintf(stderr, "latch_address requires nCE pin to be low\n");
         return EXIT_FAILURE;
     }
-    else if( ~controlbus_value & PIN_nWE )
+    else if (~controlbus_value & PIN_nWE)
     {
         fprintf(stderr, "latch_address requires nWE pin to be high\n");
         return EXIT_FAILURE;
     }
-    else if( controlbus_value & PIN_ALE )
+    else if (controlbus_value & PIN_ALE)
     {
         fprintf(stderr, "latch_address requires ALE pin to be low\n");
         return EXIT_FAILURE;
@@ -604,7 +611,7 @@ void check_ID_register(unsigned char* ID_register)
         ID_register_exp[0], ID_register_exp[1], ID_register_exp[2],
         ID_register_exp[3], ID_register_exp[4] ); 
 
-    if( strncmp( (char *)ID_register_exp, (char *)ID_register, 5 ) == 0 )
+    if (memcmp(ID_register_exp, ID_register, 5) == 0)
     {
         printf("PASS: ID register did match\n");
     }
@@ -645,7 +652,7 @@ int dump_memory(prog_params_t *params)
 
     // Start reading the data
     page_idx_max = params->start_page + params->page_count;
-    for( page_idx = params->start_page; page_idx < page_idx_max; /* blocks per page * overall blocks */ page_idx++)
+    for (page_idx = params->start_page; page_idx < page_idx_max; /* blocks per page * overall blocks */ page_idx++)
     {
       mem_address = page_idx * PAGE_SIZE_NOSPARE; // start address
       printf("Reading data from page %d / %d (%.2f %%), address: %08X\n", 
@@ -789,7 +796,7 @@ int erase_block(prog_params_t *params, unsigned int nBlockId)
 	{
 		controlbus_val = controlbus_read_input();
 	}
-	while( !(controlbus_val & PIN_RDY) );
+	while (!(controlbus_val & PIN_RDY));
 
 	printf("  done\n");
 
@@ -804,12 +811,10 @@ int erase_block(prog_params_t *params, unsigned int nBlockId)
 	/* output the retrieved status register content */
 	printf("Status register content:   0x%02X\n", status_register);
 
-
 	/* activate write protection again */
 	controlbus_pin_set(PIN_nWP, OFF);
 
-
-	if(status_register & STATUSREG_IO0)
+	if (status_register & STATUSREG_IO0)
 	{
 		fprintf(stderr, "Failed to erase block.\n");
 		return 1;
@@ -820,7 +825,6 @@ int erase_block(prog_params_t *params, unsigned int nBlockId)
 		return 0;
 	}
 }
-
 
 int latch_data_out(prog_params_t *params, unsigned char data[], unsigned int length)
 {
@@ -919,7 +923,7 @@ int program_page(prog_params_t *params, unsigned int nPageId, unsigned char* dat
 		controlbus_val = controlbus_read_input();
 		printf(".");
 	}
-	while( !(controlbus_val & PIN_RDY) );
+	while (!(controlbus_val & PIN_RDY));
 
 	printf("  done\n");
 
@@ -939,7 +943,7 @@ int program_page(prog_params_t *params, unsigned int nPageId, unsigned char* dat
 	controlbus_pin_set(PIN_nWP, OFF);
 
 
-	if(status_register & STATUSREG_IO0)
+	if (status_register & STATUSREG_IO0)
 	{
 		fprintf(stderr, "Failed to program page.\n");
 		return 1;
@@ -953,7 +957,7 @@ int program_page(prog_params_t *params, unsigned int nPageId, unsigned char* dat
 
 void get_page_dummy_data(unsigned char* page_data)
 {
-	for(unsigned int k=0; k<PAGE_SIZE_NOSPARE; k++)
+	for (unsigned int k=0; k<PAGE_SIZE_NOSPARE; k++)
 	{
 		unsigned int m = k % 8;
 		switch( m )
@@ -976,7 +980,7 @@ void get_page_dummy_data(unsigned char* page_data)
 				break;
 		}
 	}
-	for(unsigned int k=PAGE_SIZE_NOSPARE; k<PAGE_SIZE; k++)
+	for (unsigned int k=PAGE_SIZE_NOSPARE; k<PAGE_SIZE; k++)
 	{
 		page_data[k] = 0x11;
 	}
@@ -1040,7 +1044,7 @@ int main(int argc, char **argv)
         version.minor, version.micro, version.snapshot_str);
 
     // Init 1. channel for databus
-    if ((nandflash_iobus = ftdi_new()) == 0)
+    if ((nandflash_iobus = ftdi_new()) == NULL)
     {
         fprintf(stderr, "ftdi_new failed for iobus\n");
         return EXIT_FAILURE;
@@ -1062,7 +1066,7 @@ int main(int argc, char **argv)
     ftdi_set_bitmode(nandflash_iobus, IOBUS_BITMASK_WRITE, BITMODE_BITBANG);
 
     // Init 2. channel
-    if ((nandflash_controlbus = ftdi_new()) == 0)
+    if ((nandflash_controlbus = ftdi_new()) == NULL)
     {
         fprintf(stderr, "ftdi_new failed\n");
         return EXIT_FAILURE;
@@ -1099,15 +1103,6 @@ int main(int argc, char **argv)
 
         return 0;
     }
-
-
-    /*printf("testing control bus, check visually...\n");
-    _usleep(2* 1000000);
-    test_controlbus();
-
-    printf("testing I/O bus for output, check visually...\n");
-    _usleep(2* 1000000);
-    test_iobus();*/
 
     printf("testing I/O and control bus for input read...\n");
     iobus_set_direction(IOBUS_IN);
@@ -1166,10 +1161,8 @@ int main(int argc, char **argv)
     /* Dump memory of the chip */
     dump_memory(&params);
 
-
     // set nCE high
     controlbus_pin_set(PIN_nCE, ON);
-
 
     printf("done, 1 sec to go...\n");
     _usleep(1 * 1000000);
