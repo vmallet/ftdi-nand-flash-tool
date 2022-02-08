@@ -62,6 +62,12 @@
 
 #define PAGE_SIZE 2112
 #define PAGE_SIZE_NOSPARE 2048
+#define BLOCK_COUNT 2048
+
+#define DEFAULT_FILENAME "flashdump.bin"
+#define DEFAULT_START_PAGE 0
+#define DEFAULT_PAGE_COUNT 131072
+
 
 const unsigned char CMD_READID = 0x90; /* read ID register */
 const unsigned char CMD_READ1[2] = { 0x00, 0x30 }; /* page read */
@@ -76,6 +82,71 @@ unsigned char iobus_value;
 unsigned char controlbus_value;
 
 struct ftdi_context *nandflash_iobus, *nandflash_controlbus;
+
+typedef struct _prog_params {
+    int start_page;
+    char *filename;
+    int overwrite;
+    int page_count;
+} prog_params_t;
+
+
+void reset_prog_params(prog_params_t *params)
+{
+    memset(params, 0, sizeof(*params));
+    params->start_page = DEFAULT_START_PAGE;
+    params->filename = DEFAULT_FILENAME;
+    params->page_count = DEFAULT_PAGE_COUNT;
+}
+
+void print_prog_params(prog_params_t *params)
+{
+    printf("Params: start_page=%d (%x), page_count=%d, filename=%s, overwrite=%d\n",
+        params->start_page,
+        params->start_page,
+        params->page_count,
+        params->filename,
+        params->overwrite);
+}
+
+int parse_prog_params(prog_params_t *params, int argc, char **argv)
+{
+  int index;
+  int c;
+
+  reset_prog_params(params);
+
+  opterr = 0;
+
+  while ((c = getopt (argc, argv, "c:s:f:o")) != -1)
+    switch (c)
+      {
+      case 'c':
+        params->page_count = atoi(optarg);
+        break;
+      case 'f':
+        params->filename = optarg;
+        break;
+      case 'o':
+        params->overwrite = 1;
+        break;
+      case 's':
+        params->start_page = atoi(optarg);
+        break;
+      case '?':
+        if (strchr("csf", optopt))
+          fprintf (stderr, "Option -%c requires an argument.\n", optopt);
+        else 
+          fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+        return 1;
+      default:
+        abort ();
+      }
+
+  for (index = optind; index < argc; index++)
+    printf ("Non-option argument %s\n", argv[index]);
+  return 0;
+}
 
 void controlbus_reset_value()
 {
@@ -521,7 +592,7 @@ void get_address_cycle_map_x8(uint32_t mem_address, unsigned char* addr_cylces)
     addr_cylces[4] = (unsigned char)( (mem_address & 0x30000000) >> 28 );
 }
 
-void dump_memory(void)
+void dump_memory(prog_params_t *params)
 {
     FILE *fp;
     unsigned int page_idx;
@@ -535,7 +606,7 @@ void dump_memory(void)
     printf("Trying to open file for storing the binary dump...\n");
     /* Opens a text file for both reading and writing. It first truncates the file to zero length
      * if it exists, otherwise creates a file if it does not exist. */
-    fp = fopen("flashdump.bin", "w+");
+    fp = fopen(params->filename, "w+");
 
     if( fp == NULL )
         printf("  Error when opening the file...\n");
@@ -543,11 +614,10 @@ void dump_memory(void)
         printf("  File opened successfully...\n");
 
     // Start reading the data
-    mem_address = 0x00000000; // start address
-    page_idx_max = 64 * 4096;
-    for( page_idx = 0; page_idx < page_idx_max; /* blocks per page * overall blocks */ page_idx++)
+    page_idx_max = params->start_page + params->page_count;
+    for( page_idx = params->start_page; page_idx < page_idx_max; /* blocks per page * overall blocks */ page_idx++)
     {
-
+      mem_address = page_idx * PAGE_SIZE_NOSPARE; // start address
       printf("Reading data from page %d / %d (%.2f %%)\n", page_idx, page_idx_max, (float)page_idx/(float)page_idx_max * 100 );
       {
           printf("Reading data from memory address 0x%02X\n", mem_address);
@@ -611,8 +681,6 @@ void dump_memory(void)
       // Dumping memory to file
       //printf("Dumping binary data to file...\n");
       fwrite(&mem_large_block[0], 1, PAGE_SIZE, fp);
-
-      mem_address += PAGE_SIZE; // add bytes per block (i.e. goto next block)
     }
 
     // Finished reading the data
@@ -881,6 +949,21 @@ int main(int argc, char **argv)
     struct ftdi_version_info version;
     unsigned char ID_register[5];
     int f;
+    prog_params_t params;
+
+    if (parse_prog_params(&params, argc, argv))
+    {
+       return 1;
+    }
+
+    print_prog_params(&params);
+
+    if (!access(params.filename, F_OK) && !params.overwrite)
+    {
+        printf("File already exists, use -o to overwrite: %s\n", params.filename);
+        return 2;
+    }
+
 
     // show library version
     version = ftdi_get_library_version();
@@ -899,7 +982,8 @@ int main(int argc, char **argv)
     f = ftdi_usb_open(nandflash_iobus, FT2232H_VID, FT2232H_PID);
     if (f < 0 && f != -5)
     {
-        fprintf(stderr, "unable to open ftdi device: %d (%s)\n", f,
+        fprintf(stderr, "unable to open ftdi device: %d (%s)  --  " \
+                        "Should you run as root?\n", f,
           ftdi_get_error_string(nandflash_iobus));
         ftdi_free(nandflash_iobus);
         exit(-1);
@@ -1001,7 +1085,7 @@ int main(int argc, char **argv)
 //    }
 
     /* Dump memory of the chip */
-    dump_memory();
+    dump_memory(&params);
 
 
     // set nCE high
