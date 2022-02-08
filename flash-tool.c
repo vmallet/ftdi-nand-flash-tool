@@ -29,6 +29,17 @@
 #include <unistd.h>
 #include <ftdi.h>
 
+// #define DEBUG 
+
+#ifdef DEBUG
+  #define DBG(...) do { printf(__VA_ARGS__); } while (0)
+  #define DBGFLUSH(...) do { printf(__VA_ARGS__); fflush(stdout); } while (0)
+#else
+  #define DBG(...)
+  #define DBGFLUSH(...)
+#endif
+
+
 /* FTDI FT2232H VID and PID */
 #define FT2232H_VID 0x0403
 #define FT2232H_PID 0x6010
@@ -430,31 +441,31 @@ int latch_command(prog_params_t *params, unsigned char command)
     }
 
     /* debug info */
-    printf("latch_command(0x%02X)\n", command);
+    DBG("latch_command(0x%02X)\n", command);
 
     /* toggle CLE high (activates the latching of the IO inputs inside the 
      * Command Register on the Rising edge of nWE) */
-    printf("  setting CLE high\n");
+    DBGFLUSH("  setting CLE high,");
     controlbus_pin_set(PIN_CLE, ON);
     controlbus_update_output();
 
     // toggle nWE low
-    printf("  setting nWE low\n");
+    DBGFLUSH(" nWE low,");
     controlbus_pin_set(PIN_nWE, OFF);
     controlbus_update_output();
 
     // change I/O pins
-    printf("  setting I/O bus to command\n");
+    DBGFLUSH(" I/O bus to command,");
     iobus_set_value(command);
     iobus_update_output();
 
     // toggle nWE back high (acts as clock to latch the command!)
-    printf("  setting nWE high\n");
+    DBGFLUSH(" nWE high,");
     controlbus_pin_set(PIN_nWE, ON);
     controlbus_update_output();
 
     // toggle CLE low
-    printf("  setting CLE low\n");
+    DBG(" CLE low\n");
     controlbus_pin_set(PIN_CLE, OFF);
     controlbus_update_output();
 
@@ -632,35 +643,41 @@ int dump_memory(prog_params_t *params)
     for( page_idx = params->start_page; page_idx < page_idx_max; /* blocks per page * overall blocks */ page_idx++)
     {
       mem_address = page_idx * PAGE_SIZE_NOSPARE; // start address
-      printf("Reading data from page %d / %d (%.2f %%)\n", page_idx, page_idx_max, (float)page_idx/(float)page_idx_max * 100 );
+      printf("Reading data from page %d / %d (%.2f %%), address: %08X\n", 
+             page_idx, page_idx_max, (float)page_idx/(float)page_idx_max * 100,
+             mem_address);
       {
-          printf("Reading data from memory address 0x%02X\n", mem_address);
-          get_address_cycle_map_x8(mem_address, addr_cylces);
-          printf("  Address cycles are: 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
-              addr_cylces[0], addr_cylces[1], /* column address */
-              addr_cylces[2], addr_cylces[3], addr_cylces[4] ); /* row address */
 
-          printf("Latching first command byte to read a page...\n");
+          DBG("Latching first command byte to read a page: ");
           latch_command(params, CMD_READ1[0]);
 
-          printf("Latching address cycles...\n");
+          get_address_cycle_map_x8(mem_address, addr_cylces);
+          DBG("Latching address cycles: 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
+              addr_cylces[0], addr_cylces[1], /* column address */
+              addr_cylces[2], addr_cylces[3], addr_cylces[4] ); /* row address */
           latch_address(params, addr_cylces, 5);
 
-          printf("Latching second command byte to read a page...\n");
+          DBG("Latching second command byte to read a page: ");
           latch_command(params, CMD_READ1[1]);
 
           // busy-wait for high level at the busy line
-          printf("Checking for busy line...\n");
+          DBG("Checking for busy line...");
+          int loops = 0;
           unsigned char controlbus_val;
           do
           {
+              if (loops)
+              {
+                  DBGFLUSH(".");
+              }
+              loops++;
               controlbus_val = controlbus_read_input();
           }
-          while( !(controlbus_val & PIN_RDY) );
+          while (!(controlbus_val & PIN_RDY));
 
-          printf("  done\n");
+          DBG("  done\n");
 
-          printf("Latching out data block...\n");
+          DBG("Clocking out data block...\n");
           latch_register(params, mem_large_block, PAGE_SIZE);
       }
 
@@ -701,6 +718,7 @@ int dump_memory(prog_params_t *params)
       }
       // Flush every page so we can Ctrl-C happily; the dump is slow enough anyways.
       fflush(fp);
+      DBG("\n");
     }
 
     // Finished reading the data
