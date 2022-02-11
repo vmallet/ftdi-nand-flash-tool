@@ -102,6 +102,9 @@ typedef struct _prog_params {
     int page_count;
     int delay; /* delay in usec */
     int test; /* run simple tests instead of dump */
+    int do_program;
+    char *input_file;
+    int input_skip; /* Number of pages to first skip when programming */
 } prog_params_t;
 
 
@@ -117,14 +120,17 @@ void reset_prog_params(prog_params_t *params)
 void print_prog_params(prog_params_t *params)
 {
     printf("Params: start_page=%d (%x), page_count=%d, filename=%s, "
-           "overwrite=%d, delay=%d, test=%d\n",
+           "overwrite=%d, delay=%d, test=%d, program=%d (input file=%s, skip=%d)\n",
         params->start_page,
         params->start_page,
         params->page_count,
         params->filename,
         params->overwrite,
         params->delay,
-        params->test);
+        params->test,
+        params->do_program,
+        params->input_file,
+        params->input_skip);
 }
 
 int parse_prog_params(prog_params_t *params, int argc, char **argv)
@@ -136,7 +142,7 @@ int parse_prog_params(prog_params_t *params, int argc, char **argv)
 
   opterr = 0;
 
-  while ((c = getopt (argc, argv, "c:d:s:tf:o")) != -1)
+  while ((c = getopt(argc, argv, "c:d:s:tf:k:op:")) != -1)
     switch (c)
       {
       case 'c':
@@ -148,8 +154,15 @@ int parse_prog_params(prog_params_t *params, int argc, char **argv)
       case 'f':
         params->filename = optarg;
         break;
+      case 'k':
+        params->input_skip = atoi(optarg);
+        break;
       case 'o':
         params->overwrite = 1;
+        break;
+      case 'p':
+        params->do_program = 1;
+        params->input_file = optarg;
         break;
       case 's':
         params->start_page = atoi(optarg);
@@ -158,7 +171,7 @@ int parse_prog_params(prog_params_t *params, int argc, char **argv)
         params->test = 1;
         break;
       case '?':
-        if (strchr("csf", optopt))
+        if (strchr("cdsfkp", optopt))
           fprintf (stderr, "Option -%c requires an argument.\n", optopt);
         else 
           fprintf (stderr, "Unknown option `-%c'.\n", optopt);
@@ -915,104 +928,174 @@ int latch_data_out(prog_params_t *params, unsigned char data[], unsigned int len
  * The command register remains in Read Status command mode until another valid command is written to the
  * command register.
  */
-int program_page(prog_params_t *params, unsigned int nPageId, unsigned char* data)
+int program_page(prog_params_t *params, unsigned int page, unsigned char* data)
 {
 	uint32_t mem_address;
-    unsigned char addr_cylces[5];
+    unsigned char addr_cycles[5];
 
-    mem_address = nPageId * PAGE_SIZE;
+    mem_address = page* PAGE_SIZE_NOSPARE;
+    printf("Writing data to page %u, memory address 0x%02X\n", page, mem_address);
 
 	/* remove write protection */
 	controlbus_pin_set(PIN_nWP, ON);
 
-	printf("Writing data to memory address 0x%02X\n", mem_address);
-    get_address_cycle_map_x8(mem_address, addr_cylces);
-    printf("  Address cycles are: 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
-        addr_cylces[0], addr_cylces[1], /* column address */
-        addr_cylces[2], addr_cylces[3], addr_cylces[4] ); /* row address */
+    get_address_cycle_map_x8_toshiba_page(page, 0, addr_cycles);
+    DBG("  Address cycles are: 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
+        addr_cycles[0], addr_cycles[1], /* column address */
+        addr_cycles[2], addr_cycles[3], addr_cycles[4]); /* row address */
 
-	printf("Latching first command byte to write a page (page size is %d)...\n",
+	DBG("Latching first command byte to write a page (page size is %d)...\n",
 			PAGE_SIZE);
 	latch_command(params, CMD_PAGEPROGRAM[0]); /* Serial Data Input command */
 
-	printf("Latching address cycles...\n");
-    latch_address(params, addr_cylces, 5);
+	DBG("Latching address cycles...\n");
+    latch_address(params, addr_cycles, 5);
 
-	printf("Latching out the data of the page...\n");
+	DBG("Latching out the data of the page...\n");
 	latch_data_out(params, data, PAGE_SIZE);
 
-	printf("Latching second command byte to write a page...\n");
+	DBG("Latching second command byte to write a page...\n");
 	latch_command(params, CMD_PAGEPROGRAM[1]); /* Page Program confirm command command */
 
 	// busy-wait for high level at the busy line
-	printf("Checking for busy line...\n");
-	unsigned char controlbus_val;
-	do
-	{
-		controlbus_val = controlbus_read_input();
-		printf(".");
-	}
-	while (!(controlbus_val & PIN_RDY));
+    DBG("Checking for busy line...");
+    int loops = 0;
+    unsigned char controlbus_val;
+    do
+    {
+      if (loops)
+      {
+          DBGFLUSH(".");
+      }
+      loops++;
+      controlbus_val = controlbus_read_input();
+    }
+    while (!(controlbus_val & PIN_RDY));
 
-	printf("  done\n");
-
+    DBG("  done\n");
 
 	/* Read status */
-	printf("Latching command byte to read status...\n");
+	DBG("Latching command byte to read status...\n");
 	latch_command(params, CMD_READSTATUS);
 
 	unsigned char status_register;
 	latch_register(params, &status_register, 1); /* data output operation */
 
 	/* output the retrieved status register content */
-	printf("Status register content:   0x%02X\n", status_register);
-
+	printf("  Status register content:   0x%02X\n", status_register);
 
 	/* activate write protection again */
 	controlbus_pin_set(PIN_nWP, OFF);
 
-
 	if (status_register & STATUSREG_IO0)
 	{
-		fprintf(stderr, "Failed to program page.\n");
+		fprintf(stderr, "Failed to program page %u.\n", page);
 		return 1;
 	}
-	else
-	{
-		printf("Successfully programmed page.\n");
-		return 0;
-	}
+
+    printf("  => Successfully programmed page %u.\n", page);
+    return 0;
 }
 
-void get_page_dummy_data(unsigned char* page_data)
+/*
+ * Return 1 if the given buffer is all the same value, 0 if at least one byte
+ * is different.
+ */
+int is_all_val(unsigned char *b, int len, unsigned char val)
 {
-	for (unsigned int k=0; k<PAGE_SIZE_NOSPARE; k++)
-	{
-		unsigned int m = k % 8;
-		switch( m )
-		{
-			case 0:
-			case 4:
-				page_data[k] = 0xDE;
-				break;
-			case 1:
-			case 5:
-				page_data[k] = 0xAD;
-				break;
-			case 2:
-			case 6:
-				page_data[k] = 0xBE;
-				break;
-			case 3:
-			case 7:
-				page_data[k] = 0xEF;
-				break;
-		}
-	}
-	for (unsigned int k=PAGE_SIZE_NOSPARE; k<PAGE_SIZE; k++)
-	{
-		page_data[k] = 0x11;
-	}
+    unsigned char *p = b;
+    for (int i = 0; i < len; i++, p++) 
+    {
+        if (*p != val) 
+        {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+/*
+ * Program params->page_count pages of the given file (params->input_file) 
+ * into the flash starting at page params->start_page.
+ */
+int program_file(prog_params_t *params)
+{
+    if (params->input_file == NULL)
+    {
+        fprintf(stderr, "error: no input_file specified\n");
+        return -1;
+    }
+
+    FILE *f = fopen(params->input_file, "rb");
+    if (f == NULL)
+    {
+        fprintf(stderr, "Error: can't open input data file: %s\n", params->input_file);
+        return -1;
+    }
+
+    unsigned char *buf = malloc(PAGE_SIZE);
+    if (buf == NULL) 
+    {
+        fprintf(stderr, "malloc error, size=%d\n", PAGE_SIZE);
+        fclose(f);
+        return -1;
+    }
+
+    if (params->input_skip)
+    {
+        long skip_bytes = params->input_skip * PAGE_SIZE;
+        printf("Skipping %d pages from input file (%ld bytes)\n", 
+               params->input_skip, skip_bytes);
+        fseek(f, skip_bytes, SEEK_SET);
+        if (ftell(f) != skip_bytes)
+        {
+            fprintf(stderr, "Seek failed, aborting\n");
+            free(buf);
+            fclose(f);
+            return -1;
+        }
+    }
+
+    int n = 0;
+    int programmed = 0, skipped = 0;
+    unsigned int page_idx = params->start_page;
+    while (n < params->page_count && fread(buf, PAGE_SIZE, 1, f))
+    {
+        // Skip pages that are purely 0xFFs (NAND only programs bits to 0)
+        // HACK: also skip pages that are purely 0x00s as these might have come 
+        //   from bad blocks, and flashing them would turn possibly good blocks
+        //   into marked-as-bad blocks
+        // TODO: This code will blindly attempt to write over factory bad blocks,
+        //   possibly loosing factory bad block information. 
+        if (!is_all_val(buf, PAGE_SIZE, 0xFF) && !is_all_val(buf, PAGE_SIZE, 0x00))
+        {
+            programmed++;
+            int ret = program_page(params, page_idx, buf);
+            if (ret != 0)
+            {
+                fprintf(stderr, "Program error on page=%d (0x%x), file buf %d; "
+                                "aborting programming\n", 
+                        page_idx, page_idx, n);
+                free(buf);
+                fclose(f);
+                return -1;
+            }
+        }
+        else 
+        {
+            skipped++;
+        }
+        page_idx++;
+        n++;
+    }
+
+    printf("Went over %d pages, programmed %d pages, empty skipped %d\n", n, programmed, skipped);
+
+    free(buf);
+    fclose(f);
+
+    return 0;
 }
 
 void run_tests(prog_params_t *params)
@@ -1060,7 +1143,7 @@ int main(int argc, char **argv)
 
     print_prog_params(&params);
 
-    if (!access(params.filename, F_OK) && !params.overwrite)
+    if (!params.do_program && !access(params.filename, F_OK) && !params.overwrite)
     {
         printf("File already exists, use -o to overwrite: %s\n", params.filename);
         return 2;
@@ -1167,6 +1250,16 @@ int main(int argc, char **argv)
         check_ID_register(ID_register);
     }
 
+    int ret = 0;
+    if (params.do_program)
+    {
+        ret = program_file(&params);
+    }
+    else
+    {
+        ret = dump_memory(&params);
+    }
+
 	/* Erase all blocks */
 //    for( unsigned int nBlockId = 0; nBlockId < 4096; nBlockId++ )
 //    {
@@ -1176,19 +1269,6 @@ int main(int argc, char **argv)
 //	erase_block(0);
 //
 //	_usleep(1* 1000000);
-//
-//	/* Write pages 0..9 with dummy data */
-//    unsigned char page_data[PAGE_SIZE];
-//    get_page_dummy_data(page_data);
-//
-//    for(unsigned int m=0; m<10; m++)
-//    {
-//		program_page(0, page_data);
-//		_usleep(1* 1000000);
-//    }
-
-    /* Dump memory of the chip */
-    dump_memory(&params);
 
     // set nCE high
     controlbus_pin_set(PIN_nCE, ON);
@@ -1198,5 +1278,5 @@ int main(int argc, char **argv)
 
     close_busses();
 
-    return 0;
+    return ret;
 }
