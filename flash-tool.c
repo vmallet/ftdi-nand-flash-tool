@@ -804,68 +804,68 @@ int dump_memory(prog_params_t *params)
  */
 int erase_block(prog_params_t *params, unsigned int nBlockId)
 {
-	uint32_t mem_address;
-	unsigned char addr_cylces[5];
+    uint32_t mem_address;
+    unsigned char addr_cylces[5];
 
-	/* calculate memory address */
-	mem_address = 2048 * 64 * nBlockId; // (2K + 64) bytes x 64 pages per block
+    /* calculate memory address */
+    mem_address = 2048 * 64 * nBlockId; // (2K + 64) bytes x 64 pages per block
 
-	/* remove write protection */
-	controlbus_pin_set(PIN_nWP, ON);
+    /* remove write protection */
+    controlbus_pin_set(PIN_nWP, ON);
 
-	printf("Latching first command byte to erase a block...\n");
-	latch_command(params, CMD_BLOCKERASE[0]); /* block erase setup command */
+    printf("Latching first command byte to erase a block...\n");
+    latch_command(params, CMD_BLOCKERASE[0]); /* block erase setup command */
 
-	printf("Erasing block of data from memory address 0x%02X\n", mem_address);
-	get_address_cycle_map_x8(mem_address, addr_cylces);
-	printf("  Address cycles are (but: will take only cycles 3..5) : 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
-		addr_cylces[0], addr_cylces[1], /* column address */
-		addr_cylces[2], addr_cylces[3], addr_cylces[4] ); /* row address */
+    printf("Erasing block of data from memory address 0x%02X\n", mem_address);
+    get_address_cycle_map_x8(mem_address, addr_cylces);
+    printf("  Address cycles are (but: will take only cycles 3..5) : 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
+        addr_cylces[0], addr_cylces[1], /* column address */
+        addr_cylces[2], addr_cylces[3], addr_cylces[4] ); /* row address */
 
-	printf("Latching page(row) address (3 bytes)...\n");
-	unsigned char address[] = { addr_cylces[2], addr_cylces[3], addr_cylces[4] };
-	latch_address(params, address, 3);
+    printf("Latching page(row) address (3 bytes)...\n");
+    unsigned char address[] = { addr_cylces[2], addr_cylces[3], addr_cylces[4] };
+    latch_address(params, address, 3);
 
-	printf("Latching second command byte to erase a block...\n");
-	latch_command(params, CMD_BLOCKERASE[1]);
+    printf("Latching second command byte to erase a block...\n");
+    latch_command(params, CMD_BLOCKERASE[1]);
 
-	/* tWB: WE High to Busy is 100 ns -> ignore it here as it takes some time for the next command to execute */
+    /* tWB: WE High to Busy is 100 ns -> ignore it here as it takes some time for the next command to execute */
 
-	// busy-wait for high level at the busy line
-	printf("Checking for busy line...\n");
-	unsigned char controlbus_val;
-	do
-	{
-		controlbus_val = controlbus_read_input();
-	}
-	while (!(controlbus_val & PIN_RDY));
+    // busy-wait for high level at the busy line
+    printf("Checking for busy line...\n");
+    unsigned char controlbus_val;
+    do
+    {
+        controlbus_val = controlbus_read_input();
+    }
+    while (!(controlbus_val & PIN_RDY));
 
-	printf("  done\n");
+    printf("  done\n");
 
 
-	/* Read status */
-	printf("Latching command byte to read status...\n");
-	latch_command(params, CMD_READSTATUS);
+    /* Read status */
+    printf("Latching command byte to read status...\n");
+    latch_command(params, CMD_READSTATUS);
 
-	unsigned char status_register;
-	latch_register(params, &status_register, 1); /* data output operation */
+    unsigned char status_register;
+    latch_register(params, &status_register, 1); /* data output operation */
 
-	/* output the retrieved status register content */
-	printf("Status register content:   0x%02X\n", status_register);
+    /* output the retrieved status register content */
+    printf("Status register content:   0x%02X\n", status_register);
 
-	/* activate write protection again */
-	controlbus_pin_set(PIN_nWP, OFF);
+    /* activate write protection again */
+    controlbus_pin_set(PIN_nWP, OFF);
 
-	if (status_register & STATUSREG_IO0)
-	{
-		fprintf(stderr, "Failed to erase block.\n");
-		return 1;
-	}
-	else
-	{
-		printf("Successfully erased block.\n");
-		return 0;
-	}
+    if (status_register & STATUSREG_IO0)
+    {
+        fprintf(stderr, "Failed to erase block.\n");
+        return 1;
+    }
+    else
+    {
+        printf("Successfully erased block.\n");
+        return 0;
+    }
 }
 
 int latch_data_out(prog_params_t *params, unsigned char data[], unsigned int length)
@@ -930,34 +930,34 @@ int latch_data_out(prog_params_t *params, unsigned char data[], unsigned int len
  */
 int program_page(prog_params_t *params, unsigned int page, unsigned char* data)
 {
-	uint32_t mem_address;
+    uint32_t mem_address;
     unsigned char addr_cycles[5];
 
     mem_address = page* PAGE_SIZE_NOSPARE;
     printf("Writing data to page %u, memory address 0x%02X\n", page, mem_address);
 
-	/* remove write protection */
-	controlbus_pin_set(PIN_nWP, ON);
+    /* remove write protection */
+    controlbus_pin_set(PIN_nWP, ON);
 
     get_address_cycle_map_x8_toshiba_page(page, 0, addr_cycles);
     DBG("  Address cycles are: 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
         addr_cycles[0], addr_cycles[1], /* column address */
         addr_cycles[2], addr_cycles[3], addr_cycles[4]); /* row address */
 
-	DBG("Latching first command byte to write a page (page size is %d)...\n",
-			PAGE_SIZE);
-	latch_command(params, CMD_PAGEPROGRAM[0]); /* Serial Data Input command */
+    DBG("Latching first command byte to write a page (page size is %d)...\n",
+            PAGE_SIZE);
+    latch_command(params, CMD_PAGEPROGRAM[0]); /* Serial Data Input command */
 
-	DBG("Latching address cycles...\n");
+    DBG("Latching address cycles...\n");
     latch_address(params, addr_cycles, 5);
 
-	DBG("Latching out the data of the page...\n");
-	latch_data_out(params, data, PAGE_SIZE);
+    DBG("Latching out the data of the page...\n");
+    latch_data_out(params, data, PAGE_SIZE);
 
-	DBG("Latching second command byte to write a page...\n");
-	latch_command(params, CMD_PAGEPROGRAM[1]); /* Page Program confirm command command */
+    DBG("Latching second command byte to write a page...\n");
+    latch_command(params, CMD_PAGEPROGRAM[1]); /* Page Program confirm command command */
 
-	// busy-wait for high level at the busy line
+    // busy-wait for high level at the busy line
     DBG("Checking for busy line...");
     int loops = 0;
     unsigned char controlbus_val;
@@ -974,24 +974,24 @@ int program_page(prog_params_t *params, unsigned int page, unsigned char* data)
 
     DBG("  done\n");
 
-	/* Read status */
-	DBG("Latching command byte to read status...\n");
-	latch_command(params, CMD_READSTATUS);
+    /* Read status */
+    DBG("Latching command byte to read status...\n");
+    latch_command(params, CMD_READSTATUS);
 
-	unsigned char status_register;
-	latch_register(params, &status_register, 1); /* data output operation */
+    unsigned char status_register;
+    latch_register(params, &status_register, 1); /* data output operation */
 
-	/* output the retrieved status register content */
-	printf("  Status register content:   0x%02X\n", status_register);
+    /* output the retrieved status register content */
+    printf("  Status register content:   0x%02X\n", status_register);
 
-	/* activate write protection again */
-	controlbus_pin_set(PIN_nWP, OFF);
+    /* activate write protection again */
+    controlbus_pin_set(PIN_nWP, OFF);
 
-	if (status_register & STATUSREG_IO0)
-	{
-		fprintf(stderr, "Failed to program page %u.\n", page);
-		return 1;
-	}
+    if (status_register & STATUSREG_IO0)
+    {
+        fprintf(stderr, "Failed to program page %u.\n", page);
+        return 1;
+    }
 
     printf("  => Successfully programmed page %u.\n", page);
     return 0;
@@ -1260,15 +1260,15 @@ int main(int argc, char **argv)
         ret = dump_memory(&params);
     }
 
-	/* Erase all blocks */
+    /* Erase all blocks */
 //    for( unsigned int nBlockId = 0; nBlockId < 4096; nBlockId++ )
 //    {
-//    	erase_block(nBlockId);
+//      erase_block(nBlockId);
 //    }
     /* Erase block #0 */
-//	erase_block(0);
+//  erase_block(0);
 //
-//	_usleep(1* 1000000);
+//  _usleep(1* 1000000);
 
     // set nCE high
     controlbus_pin_set(PIN_nCE, ON);
