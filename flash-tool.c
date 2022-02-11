@@ -133,6 +133,31 @@ void print_prog_params(prog_params_t *params)
         params->input_skip);
 }
 
+void usage(char **argv)
+{
+    printf("usage: %s  [-s start-page] [-c count] [-k skip-pages] [-d delay]" \
+           " [-o] [-t] [-h] [-f output] [-p input]\n", argv[0]);
+    printf("  -h      : this help\n");
+
+    printf("  -c n    : only process n pages (dump, program)\n");
+    printf("  -d n    : add n usecs of delay for some operations (default 0)\n");
+    printf("  -f name : name of output file when dumping (default: flashdump.bin)\n");
+    printf("  -k n    : skip of n pages in input file when programming (program)\n");
+    printf("  -o      : overwrite output file (dump)\n");
+    printf("  -p name : program file 'name' into flash\n");
+    printf("  -s n    : start page in flash (dump, program)\n");
+    printf("  -t      : run tests to check correct wiring; DISCONNECT THE FLASH\n");
+    printf("\n");
+    printf("Examples:\n");
+    printf("   %s -f /tmp/dump1.bin -s 10000 -c 500\n", argv[0]);
+    printf("      dump 500 pages, starting at page 10000, into file /tmp/dump1.bin\n");
+    printf("\n");
+    printf("   %s -p /tmp/dump1.bin -s 10100 -c 400 -k 100\n", argv[0]);
+    printf("      program 400 pages starting at page 10100, using file /tmp/dump1.bin\n");
+    printf("      and after skipping 100 pages from file\n");
+    printf("\n");
+}
+
 int parse_prog_params(prog_params_t *params, int argc, char **argv)
 {
   int index;
@@ -142,7 +167,7 @@ int parse_prog_params(prog_params_t *params, int argc, char **argv)
 
   opterr = 0;
 
-  while ((c = getopt(argc, argv, "c:d:s:tf:k:op:")) != -1)
+  while ((c = getopt(argc, argv, "c:d:s:tf:hk:op:")) != -1)
     switch (c)
       {
       case 'c':
@@ -154,6 +179,9 @@ int parse_prog_params(prog_params_t *params, int argc, char **argv)
       case 'f':
         params->filename = optarg;
         break;
+      case 'h':
+        usage(argv);
+        return -1;
       case 'k':
         params->input_skip = atoi(optarg);
         break;
@@ -175,6 +203,7 @@ int parse_prog_params(prog_params_t *params, int argc, char **argv)
           fprintf (stderr, "Option -%c requires an argument.\n", optopt);
         else 
           fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+        fprintf(stderr, "Use -h for help\n");
         return 1;
       default:
         abort ();
