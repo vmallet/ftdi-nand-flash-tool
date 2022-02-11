@@ -27,13 +27,15 @@ Dump the whole flash using:
 ./flash-tool -f output.bin
 ```
 
-Reprogram an empty chip with:
+Reprogram an empty chip (after erasing first) with:
 ```shell
 ./flash-tool -p output.bin
 ```
 
-Erase: not quite there yet (programming over existing data should be
-avoided at all costs).
+Erase a whole chip (note: will obliterate factory bad blocks, BAD!):
+```shell
+./flash-tool -E
+```
 
 
 ## Hardware and Wiring

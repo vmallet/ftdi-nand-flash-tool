@@ -73,6 +73,7 @@
 
 #define PAGE_SIZE 2112
 #define PAGE_SIZE_NOSPARE 2048
+#define PAGE_PER_BLOCK 64
 #define BLOCK_COUNT 2048
 
 #define DEFAULT_FILENAME "flashdump.bin"
@@ -99,12 +100,14 @@ typedef struct _prog_params {
     int start_page;
     char *filename;
     int overwrite;
-    int page_count;
+    int count;
     int delay; /* delay in usec */
     int test; /* run simple tests instead of dump */
     int do_program;
     char *input_file;
     int input_skip; /* Number of pages to first skip when programming */
+    int do_erase;
+    int start_block;
 } prog_params_t;
 
 
@@ -113,38 +116,42 @@ void reset_prog_params(prog_params_t *params)
     memset(params, 0, sizeof(*params));
     params->start_page = DEFAULT_START_PAGE;
     params->filename = DEFAULT_FILENAME;
-    params->page_count = DEFAULT_PAGE_COUNT;
     params->delay = DEFAULT_DELAY;
 }
 
 void print_prog_params(prog_params_t *params)
 {
-    printf("Params: start_page=%d (%x), page_count=%d, filename=%s, "
-           "overwrite=%d, delay=%d, test=%d, program=%d (input file=%s, skip=%d)\n",
+    printf("Params: start_page=%d (%x), count=%d, filename=%s, "
+           "overwrite=%d, delay=%d, test=%d, program=%d (input file=%s, skip=%d) "
+           "erase=%d (start_block=%d)\n",
         params->start_page,
         params->start_page,
-        params->page_count,
+        params->count,
         params->filename,
         params->overwrite,
         params->delay,
         params->test,
         params->do_program,
         params->input_file,
-        params->input_skip);
+        params->input_skip,
+        params->do_erase,
+        params->start_block);
 }
 
 void usage(char **argv)
 {
     printf("usage: %s  [-s start-page] [-c count] [-k skip-pages] [-d delay]" \
-           " [-o] [-t] [-h] [-f output] [-p input]\n", argv[0]);
+           " [-b start-block] [-o] [-t] [-h] [-f output] [-p input]\n", argv[0]);
     printf("  -h      : this help\n");
 
-    printf("  -c n    : only process n pages (dump, program)\n");
+    printf("  -b n    : start erasing at block n (erase)\n");
+    printf("  -c n    : only process n pages (dump, program) or blocks (erase)\n");
     printf("  -d n    : add n usecs of delay for some operations (default 0)\n");
+    printf("  -E      : erase flash content (dangerous!)\n");
     printf("  -f name : name of output file when dumping (default: flashdump.bin)\n");
     printf("  -k n    : skip of n pages in input file when programming (program)\n");
     printf("  -o      : overwrite output file (dump)\n");
-    printf("  -p name : program file 'name' into flash\n");
+    printf("  -p name : program file 'name' into flash (dangerous!) (program)\n");
     printf("  -s n    : start page in flash (dump, program)\n");
     printf("  -t      : run tests to check correct wiring; DISCONNECT THE FLASH\n");
     printf("\n");
@@ -155,6 +162,9 @@ void usage(char **argv)
     printf("   %s -p /tmp/dump1.bin -s 10100 -c 400 -k 100\n", argv[0]);
     printf("      program 400 pages starting at page 10100, using file /tmp/dump1.bin\n");
     printf("      and after skipping 100 pages from file\n");
+    printf("\n");
+    printf("   %s -E -b 10 -c 5\n", argv[0]);
+    printf("      erase 5 blocks, starting with block 10\n");
     printf("\n");
 }
 
@@ -167,14 +177,20 @@ int parse_prog_params(prog_params_t *params, int argc, char **argv)
 
   opterr = 0;
 
-  while ((c = getopt(argc, argv, "c:d:s:tf:hk:op:")) != -1)
+  while ((c = getopt(argc, argv, "b:c:d:Es:tf:hk:op:")) != -1)
     switch (c)
       {
+      case 'b':
+        params->start_block = atoi(optarg);
+        break;
       case 'c':
-        params->page_count = atoi(optarg);
+        params->count = atoi(optarg);
         break;
       case 'd':
         params->delay = atoi(optarg);
+        break;
+      case 'E':
+        params->do_erase = 1;
         break;
       case 'f':
         params->filename = optarg;
@@ -199,7 +215,7 @@ int parse_prog_params(prog_params_t *params, int argc, char **argv)
         params->test = 1;
         break;
       case '?':
-        if (strchr("cdsfkp", optopt))
+        if (strchr("bcdsfkp", optopt))
           fprintf (stderr, "Option -%c requires an argument.\n", optopt);
         else 
           fprintf (stderr, "Unknown option `-%c'.\n", optopt);
@@ -208,6 +224,24 @@ int parse_prog_params(prog_params_t *params, int argc, char **argv)
       default:
         abort ();
       }
+
+  if (params->do_erase && params->start_page)
+  {
+      fprintf(stderr, "-s (start page) does not work with erase. Use -b (start block)\n");
+      return -1;
+  }
+
+  if (params->start_block && params->start_page)
+  {
+      fprintf(stderr, "You can't use -s (start page) and -b (start block) "
+                      "together. Choose one.\n");
+      return -1;
+  }
+
+  if (params->start_block)
+  {
+      params->start_page = params->start_block * PAGE_PER_BLOCK;
+  }
 
   for (index = optind; index < argc; index++)
     printf ("Non-option argument %s\n", argv[index]);
@@ -702,6 +736,25 @@ void get_address_cycle_map_x8(uint32_t mem_address, unsigned char* addr_cylces)
     addr_cylces[4] = (unsigned char)( (mem_address & 0x30000000) >> 28 );
 }
 
+void wait_while_busy()
+{
+    DBG("Checking for busy line...");
+    int loops = 0;
+    unsigned char controlbus_val;
+    do
+    {
+      if (loops)
+      {
+          DBGFLUSH(".");
+      }
+      loops++;
+      controlbus_val = controlbus_read_input();
+    }
+    while (!(controlbus_val & PIN_RDY));
+
+    DBG("  done\n");
+}
+
 int dump_memory(prog_params_t *params)
 {
     FILE *fp;
@@ -721,8 +774,14 @@ int dump_memory(prog_params_t *params)
     }
     printf("Opened output file: %s\n", params->filename);
 
+    int count = params->count;
+    if (count == 0)
+    {
+        count = DEFAULT_PAGE_COUNT - params->start_page;
+    }
+
     // Start reading the data
-    page_idx_max = params->start_page + params->page_count;
+    page_idx_max = params->start_page + count;
     for (page_idx = params->start_page; page_idx < page_idx_max; /* blocks per page * overall blocks */ page_idx++)
     {
       mem_address = page_idx * PAGE_SIZE_NOSPARE; // start address
@@ -744,21 +803,7 @@ int dump_memory(prog_params_t *params)
           latch_command(params, CMD_READ1[1]);
 
           // busy-wait for high level at the busy line
-          DBG("Checking for busy line...");
-          int loops = 0;
-          unsigned char controlbus_val;
-          do
-          {
-              if (loops)
-              {
-                  DBGFLUSH(".");
-              }
-              loops++;
-              controlbus_val = controlbus_read_input();
-          }
-          while (!(controlbus_val & PIN_RDY));
-
-          DBG("  done\n");
+          wait_while_busy();
 
           DBG("Clocking out data block...\n");
           latch_register(params, mem_large_block, PAGE_SIZE);
@@ -815,7 +860,7 @@ int dump_memory(prog_params_t *params)
  * BlockErase
  *
  * "The Erase operation is done on a block basis.
- * Block address loading is accomplished in there cycles initiated by an Erase Setup command (60h).
+ * Block address loading is accomplished in three cycles initiated by an Erase Setup command (60h).
  * Only address A18 to A29 is valid while A12 to A17 is ignored (x8).
  *
  * The Erase Confirm command (D0h) following the block address loading initiates the internal erasing process.
@@ -831,70 +876,59 @@ int dump_memory(prog_params_t *params)
  * Only the Read Status command and Reset command are valid while erasing is in progress.
  * When the erase operation is completed, the Write Status Bit (I/O 0) may be checked."
  */
-int erase_block(prog_params_t *params, unsigned int nBlockId)
+int erase_block(prog_params_t *params, unsigned int block)
 {
     uint32_t mem_address;
-    unsigned char addr_cylces[5];
+    unsigned int page;
+    unsigned char addr_cycles[5];
 
     /* calculate memory address */
-    mem_address = 2048 * 64 * nBlockId; // (2K + 64) bytes x 64 pages per block
+    page = block * PAGE_PER_BLOCK;
+    mem_address = PAGE_SIZE_NOSPARE * page; 
 
     /* remove write protection */
     controlbus_pin_set(PIN_nWP, ON);
 
-    printf("Latching first command byte to erase a block...\n");
+    DBG("Latching first command byte to erase a block...\n");
     latch_command(params, CMD_BLOCKERASE[0]); /* block erase setup command */
 
-    printf("Erasing block of data from memory address 0x%02X\n", mem_address);
-    get_address_cycle_map_x8(mem_address, addr_cylces);
-    printf("  Address cycles are (but: will take only cycles 3..5) : 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
-        addr_cylces[0], addr_cylces[1], /* column address */
-        addr_cylces[2], addr_cylces[3], addr_cylces[4] ); /* row address */
+    DBG("Erasing block %u at memory address 0x%08X (page %u)\n", block, mem_address, page);
+    get_address_cycle_map_x8_toshiba_page(page, 0, addr_cycles);
+    DBG("  Address cycles are (but: will take only cycles 3..5) : 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
+        addr_cycles[0], addr_cycles[1], /* column address */
+        addr_cycles[2], addr_cycles[3], addr_cycles[4] ); /* row address */
 
-    printf("Latching page(row) address (3 bytes)...\n");
-    unsigned char address[] = { addr_cylces[2], addr_cylces[3], addr_cylces[4] };
+    DBG("Latching page(row) address (3 bytes)...\n");
+    unsigned char address[] = { addr_cycles[2], addr_cycles[3], addr_cycles[4] };
     latch_address(params, address, 3);
 
-    printf("Latching second command byte to erase a block...\n");
+    DBG("Latching second command byte to erase a block...\n");
     latch_command(params, CMD_BLOCKERASE[1]);
 
     /* tWB: WE High to Busy is 100 ns -> ignore it here as it takes some time for the next command to execute */
 
     // busy-wait for high level at the busy line
-    printf("Checking for busy line...\n");
-    unsigned char controlbus_val;
-    do
-    {
-        controlbus_val = controlbus_read_input();
-    }
-    while (!(controlbus_val & PIN_RDY));
-
-    printf("  done\n");
-
+    wait_while_busy();
 
     /* Read status */
-    printf("Latching command byte to read status...\n");
+    DBG("Latching command byte to read status...\n");
     latch_command(params, CMD_READSTATUS);
 
     unsigned char status_register;
     latch_register(params, &status_register, 1); /* data output operation */
-
-    /* output the retrieved status register content */
-    printf("Status register content:   0x%02X\n", status_register);
+    DBG("Status register content:   0x%02X\n", status_register);
 
     /* activate write protection again */
     controlbus_pin_set(PIN_nWP, OFF);
 
     if (status_register & STATUSREG_IO0)
     {
-        fprintf(stderr, "Failed to erase block.\n");
+        fprintf(stderr, "Failed to erase block %u, status register=%02X.\n", block, status_register);
         return 1;
     }
-    else
-    {
-        printf("Successfully erased block.\n");
-        return 0;
-    }
+
+    printf("  Successfully erased block %u.\n", block);
+    return 0;
 }
 
 int latch_data_out(prog_params_t *params, unsigned char data[], unsigned int length)
@@ -987,21 +1021,7 @@ int program_page(prog_params_t *params, unsigned int page, unsigned char* data)
     latch_command(params, CMD_PAGEPROGRAM[1]); /* Page Program confirm command command */
 
     // busy-wait for high level at the busy line
-    DBG("Checking for busy line...");
-    int loops = 0;
-    unsigned char controlbus_val;
-    do
-    {
-      if (loops)
-      {
-          DBGFLUSH(".");
-      }
-      loops++;
-      controlbus_val = controlbus_read_input();
-    }
-    while (!(controlbus_val & PIN_RDY));
-
-    DBG("  done\n");
+    wait_while_busy();
 
     /* Read status */
     DBG("Latching command byte to read status...\n");
@@ -1045,7 +1065,7 @@ int is_all_val(unsigned char *b, int len, unsigned char val)
 }
 
 /*
- * Program params->page_count pages of the given file (params->input_file) 
+ * Program params->count pages of the given file (params->input_file) 
  * into the flash starting at page params->start_page.
  */
 int program_file(prog_params_t *params)
@@ -1086,10 +1106,16 @@ int program_file(prog_params_t *params)
         }
     }
 
+    int count = params->count;
+    if (count == 0)
+    {
+        count = DEFAULT_PAGE_COUNT - params->start_page;
+    }
+
     int n = 0;
     int programmed = 0, skipped = 0;
     unsigned int page_idx = params->start_page;
-    while (n < params->page_count && fread(buf, PAGE_SIZE, 1, f))
+    while (n < count && fread(buf, PAGE_SIZE, 1, f))
     {
         // Skip pages that are purely 0xFFs (NAND only programs bits to 0)
         // HACK: also skip pages that are purely 0x00s as these might have come 
@@ -1123,6 +1149,32 @@ int program_file(prog_params_t *params)
 
     free(buf);
     fclose(f);
+
+    return 0;
+}
+
+/*
+ * Erase params->count blocks, starting at block params->start_block.
+ */
+int erase_flash(prog_params_t *params)
+{
+    int count = params->count; /* BLOCK count in this case */
+    if (count == 0)
+    {
+        count = BLOCK_COUNT - params->start_block;
+    }
+
+    unsigned int block = params->start_block;
+    for (int i = 0; i < count; i++) 
+    {
+        printf("Erasing block %u (%d/%d, %.1f%%)\n", block, i+1, count, ((i+1) * 100.0) / count);
+        if (erase_block(params, block)) 
+        {
+            return -1;
+        }
+
+        block++;
+    }
 
     return 0;
 }
@@ -1171,8 +1223,13 @@ int main(int argc, char **argv)
     }
 
     print_prog_params(&params);
+    printf("Current NAND params: page size: %d, page size (w/ OOB): %d, "
+           "pages per block: %d, block count: %d, page count: %d\n",
+           PAGE_SIZE_NOSPARE, PAGE_SIZE, PAGE_PER_BLOCK, BLOCK_COUNT,
+           DEFAULT_PAGE_COUNT);
 
-    if (!params.do_program && !access(params.filename, F_OK) && !params.overwrite)
+    if (!params.do_program && !params.do_erase 
+        && !access(params.filename, F_OK) && !params.overwrite)
     {
         printf("File already exists, use -o to overwrite: %s\n", params.filename);
         return 2;
@@ -1284,20 +1341,14 @@ int main(int argc, char **argv)
     {
         ret = program_file(&params);
     }
+    else if (params.do_erase)
+    {
+        ret = erase_flash(&params);
+    }
     else
     {
         ret = dump_memory(&params);
     }
-
-    /* Erase all blocks */
-//    for( unsigned int nBlockId = 0; nBlockId < 4096; nBlockId++ )
-//    {
-//      erase_block(nBlockId);
-//    }
-    /* Erase block #0 */
-//  erase_block(0);
-//
-//  _usleep(1* 1000000);
 
     // set nCE high
     controlbus_pin_set(PIN_nCE, ON);
